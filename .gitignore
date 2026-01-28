@@ -1,0 +1,13 @@
+# Dependency directories
+node_modules/
+
+# TypeScript build output
+dist/
+*.tsbuildinfo
+
+# Logs and environment
+npm-debug.log*
+.env
+
+# Thesis data (ignore if files are massive)
+# experiment_results.csv

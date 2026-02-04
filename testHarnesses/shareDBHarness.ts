@@ -1,8 +1,7 @@
 import ShareDB from 'sharedb';
 import { performance } from 'perf_hooks';
 import * as fs from 'fs';
-
-const json0 = require('ot-json0');
+import * as json0 from 'ot-json0';
 
 // Register the JSON OT type (json0) required for list operations
 ShareDB.types.register(json0.type);
@@ -11,57 +10,52 @@ type EgWalkerInsert = [number, number, string]; // [index, 0, "text"]
 type EgWalkerDelete = [number, number];         // [index, count]
 type TraceOp = EgWalkerInsert | EgWalkerDelete;
 
-async function runShareDBBenchmark() {
-    // 1. Setup in-memory backend (Simulates the coordination point)
+const batchSize = parseInt(process.argv[2] || "500");
+const rawData = JSON.parse(fs.readFileSync('../datasets/A1.json', 'utf8'));
+
+async function run() {
     const backend = new ShareDB();
     const connection = backend.connect();
     const doc = connection.get('benchmarks', 'list-1');
+    await new Promise((res) => doc.create({ items: [] }, res));
 
-    // Initialize the shared list
-    await new Promise((resolve) => doc.create({ items: [] }, resolve));
+    // Slice based on experimental batch size
+    const alphaOps: TraceOp[] = rawData.edits.slice(0, batchSize);
+    const bravoOps: TraceOp[] = rawData.edits.slice(batchSize, batchSize * 2);
 
-    // 2. Load Dataset
-    const rawData = JSON.parse(fs.readFileSync('./datasets/editing-trace.json', 'utf8'));
-    const midpoint = Math.floor(rawData.edits.length / 2);
-    const alphaOps = rawData.edits.slice(0, midpoint);
-    const bravoOps = rawData.edits.slice(midpoint);
+    // 1. Establish "History" (Alpha's work)
+    alphaOps.forEach((op: TraceOp) => doc.submitOp(translateToShareDB(op)));
 
-    // 3. Simulate Alpha's "Offline" Work
-    alphaOps.forEach((traceOp: TraceOp) => {
-        const op = translateToShareDB(traceOp);
-        doc.submitOp(op); // Applied locally
-    });
+    // 2. Measure the "Merge" (Applying Bravo's concurrent work)
+    const memBefore = process.memoryUsage().heapUsed;
+    const start = performance.now();
 
-    // 4. The Core Experiment: The "Merge"
-    // We measure the time taken to process Bravo's concurrent operations
-    const memoryBefore = process.memoryUsage().heapUsed;
-    const startTime = performance.now();
-
-    for (const traceOp of bravoOps) {
-        const op = translateToShareDB(traceOp);
-        // ShareDB transforms Bravo's ops against Alpha's already applied ops
-        doc.submitOp(op);
+    for (const op of bravoOps) {
+        doc.submitOp(translateToShareDB(op));
     }
 
-    const endTime = performance.now();
-    const memoryAfter = process.memoryUsage().heapUsed;
+    const duration = performance.now() - start;
+    const memAfter = process.memoryUsage().heapUsed;
+    
+    // Payload for OT is the sum of serialized concurrent operations
+    const payloadSize = Buffer.byteLength(JSON.stringify(bravoOps));
 
-    console.log(`ShareDB Merge Duration: ${(endTime - startTime).toFixed(4)} ms`);
-    console.log(`Memory Usage: ${((memoryAfter - memoryBefore) / 1024).toFixed(2)} KB`);
+    saveResultsToCSV('ShareDB', duration, memAfter - memBefore, payloadSize, batchSize);
 }
 
-/**
- * Translates Eg-walker traces to ShareDB JSON0 operations.
- * Trace format: [index, length, "text"] for insert, [index, count] for delete.
- */
 function translateToShareDB(traceOp: TraceOp) {
     if (traceOp.length === 3) {
-        // List Insert (li): insert 'text' at path ['items', index]
         return { p: ['items', traceOp[0]], li: traceOp[2] }; 
     } else {
-        // List Remove (ld): remove item at path ['items', index]
         return { p: ['items', traceOp[0]], ld: true }; 
     }
 }
 
-runShareDBBenchmark().catch(console.error);
+function saveResultsToCSV(algo: string, time: number, mem: number, payload: number, size: number) {
+    const fileName = 'experimentResults.csv';
+    const header = 'algorithm,batch_size,duration_ms,memory_bytes,payload_bytes\n';
+    if (!fs.existsSync(fileName)) fs.writeFileSync(fileName, header);
+    fs.appendFileSync(fileName, `${algo},${size},${time},${mem},${payload}\n`);
+}
+
+run().catch(console.error);

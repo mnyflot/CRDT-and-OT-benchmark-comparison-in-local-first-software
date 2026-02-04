@@ -10,4 +10,4 @@ npm-debug.log*
 .env
 
 # Thesis data (ignore if files are massive)
-# experiment_results.csv
+experimentResults.csv

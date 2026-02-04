@@ -24,7 +24,7 @@ do
     for i in {1..3}
     do
         echo "Run $i: Automerge..."
-        npx tsx testharnesses/automergeHarness.ts "$SIZE"
+        npx tsx testHarnesses/automergeHarness.ts "$SIZE"
         
         echo "Run $i: ShareDB..."
         npx tsx testHarnesses/sharedbHarness.ts "$SIZE"

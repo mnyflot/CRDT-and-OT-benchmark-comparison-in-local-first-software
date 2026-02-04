@@ -9,13 +9,25 @@ type TraceOp = EgWalkerInsert | EgWalkerDelete;
 const batchSize = parseInt(process.argv[2] || "500");
 const rawData = JSON.parse(fs.readFileSync("./datasets/A1.json", "utf8"));
 
+const allTransactions = (rawData.transactions || []) as {patches?: TraceOp[] }[];
+const allEdits: TraceOp[] = [];
+
+//Flatten the nested patches
+for (const tx of allTransactions) {
+    if (tx.patches) {
+        allEdits.push(...tx.patches);
+    }
+}
+
+console.log(`Successfully loaded ${allEdits.length} individual edits from A1.json`);
+
 // 1. Initial Setup
 let docAlpha = Automerge.init();
 docAlpha = Automerge.change(docAlpha, (d: any) => { d.items = []; });
 let docBravo = Automerge.clone(docAlpha);
 
-const alphaOps: TraceOp[] = rawData.edits.slice(0, batchSize);
-const bravoOps: TraceOp[] = rawData.edits.slice(batchSize, batchSize * 2);
+const alphaOps: TraceOp[] = allEdits.slice(0, batchSize);
+const bravoOps: TraceOp[] = allEdits.slice(batchSize, batchSize * 2);
 
 // 2. Apply "Offline" Work
 docAlpha = Automerge.change(docAlpha, (d: any) => {

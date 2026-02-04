@@ -3,52 +3,83 @@ import { performance } from 'perf_hooks';
 import * as fs from 'fs';
 import * as json0 from 'ot-json0';
 
-// Register the JSON OT type (json0) required for list operations
 ShareDB.types.register(json0.type);
 
-type EgWalkerInsert = [number, number, string]; // [index, 0, "text"]
-type EgWalkerDelete = [number, number];         // [index, count]
+type EgWalkerInsert = [number, number, string]; // [index, length, "text"]
+type EgWalkerDelete = [number, number];         // [index, length]
 type TraceOp = EgWalkerInsert | EgWalkerDelete;
 
 const batchSize = parseInt(process.argv[2] || "500");
-const rawData = JSON.parse(fs.readFileSync("./datasets/A1.json", 'utf8'));
 
 async function run() {
+    // 1. Load and Flatten A1.json structure
+    const fileContent = fs.readFileSync("./datasets/A1.json", 'utf8');
+    const rawData = JSON.parse(fileContent);
+    const allTransactions = rawData.transactions || [];
+    const allEdits: TraceOp[] = [];
+
+    for (const tx of allTransactions) {
+        if (tx.patches) {
+            allEdits.push(...(tx.patches as TraceOp[]));
+        }
+    }
+
+    console.log(`Loaded ${allEdits.length} edits. Testing batch size: ${batchSize}`);
+
+    // 2. Setup ShareDB
     const backend = new ShareDB();
     const connection = backend.connect();
     const doc = connection.get('benchmarks', 'list-1');
     await new Promise((res) => doc.create({ items: [] }, res));
 
     // Slice based on experimental batch size
-    const alphaOps: TraceOp[] = rawData.edits.slice(0, batchSize);
-    const bravoOps: TraceOp[] = rawData.edits.slice(batchSize, batchSize * 2);
+    const alphaOps = allEdits.slice(0, batchSize);
+    const bravoOps = allEdits.slice(batchSize, batchSize * 2);
 
-    // 1. Establish "History" (Alpha's work)
-    alphaOps.forEach((op: TraceOp) => doc.submitOp(translateToShareDB(op)));
+    // 3. Establish "History" (Alpha's work)
+    alphaOps.forEach((op) => {
+        const ops = translateToOps(op);
+        ops.forEach(o => doc.submitOp(o));
+    });
 
-    // 2. Measure the "Merge" (Applying Bravo's concurrent work)
+    // 4. Measure the "Merge" (Applying Bravo's concurrent work)
     const memBefore = process.memoryUsage().heapUsed;
     const start = performance.now();
 
     for (const op of bravoOps) {
-        doc.submitOp(translateToShareDB(op));
+        const ops = translateToOps(op);
+        // In OT, applying these ops triggers the transformation against Alpha's work
+        ops.forEach(o => doc.submitOp(o));
     }
 
     const duration = performance.now() - start;
     const memAfter = process.memoryUsage().heapUsed;
     
-    // Payload for OT is the sum of serialized concurrent operations
+    // Payload for OT: Sum of individual serialized operations sent
     const payloadSize = Buffer.byteLength(JSON.stringify(bravoOps));
 
     saveResultsToCSV('ShareDB', duration, memAfter - memBefore, payloadSize, batchSize);
+    console.log(`Results saved for ShareDB at size ${batchSize}`);
 }
 
-function translateToShareDB(traceOp: TraceOp) {
-    if (traceOp.length === 3) {
-        return { p: ['items', traceOp[0]], li: traceOp[2] }; 
+/**
+ * Translates an A1.json patch into ShareDB json0 operations.
+ * Returns an array because a single 'delete length X' becomes X individual ops.
+ */
+function translateToOps(patch: TraceOp): any[] {
+    const [index, length, text] = patch;
+    const ops: any[] = [];
+
+    if (text !== undefined) {
+        // Insertion
+        ops.push({ p: ['items', index], li: text });
     } else {
-        return { p: ['items', traceOp[0]], ld: true }; 
+        // Deletion: Must delete 'length' times at the same index because the list shifts after each deletion.
+        for (let i = 0; i < length; i++) {
+            ops.push({ p: ['items', index], ld: true });
+        }
     }
+    return ops;
 }
 
 function saveResultsToCSV(algo: string, time: number, mem: number, payload: number, size: number) {

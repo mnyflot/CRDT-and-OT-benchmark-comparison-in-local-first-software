@@ -11,7 +11,7 @@ type EgWalkerDelete = [number, number];         // [index, count]
 type TraceOp = EgWalkerInsert | EgWalkerDelete;
 
 const batchSize = parseInt(process.argv[2] || "500");
-const rawData = JSON.parse(fs.readFileSync('../datasets/A1.json', 'utf8'));
+const rawData = JSON.parse(fs.readFileSync("./datasets/A1.json", 'utf8'));
 
 async function run() {
     const backend = new ShareDB();

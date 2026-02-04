@@ -7,7 +7,7 @@ type EgWalkerDelete = [number, number];
 type TraceOp = EgWalkerInsert | EgWalkerDelete;
 
 const batchSize = parseInt(process.argv[2] || "500");
-const rawData = JSON.parse(fs.readFileSync("./datasets/A1", "utf8"));
+const rawData = JSON.parse(fs.readFileSync("./datasets/A1.json", "utf8"));
 
 // 1. Initial Setup
 let docAlpha = Automerge.init();

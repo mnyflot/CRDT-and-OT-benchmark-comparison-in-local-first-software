@@ -5,87 +5,76 @@ import * as json0 from 'ot-json0';
 
 ShareDB.types.register(json0.type);
 
-type EgWalkerInsert = [number, number, string]; // [index, length, "text"]
-type EgWalkerDelete = [number, number];         // [index, length]
+type EgWalkerInsert = [number, number, string];
+type EgWalkerDelete = [number, number];
 type TraceOp = EgWalkerInsert | EgWalkerDelete;
 
 const batchSize = parseInt(process.argv[2] || "500");
+const fileContent = fs.readFileSync("./datasets/A1.json", 'utf8');
+const rawData = JSON.parse(fileContent);
+
+const allTransactions = rawData.txns || [];
+const allEdits: TraceOp[] = [];
+
+console.log(`Analyzing A1.json: Found ${allTransactions.length} transactions.`);
+
+for (const tx of allTransactions) {
+    if (tx.patches && Array.isArray(tx.patches)) {
+        allEdits.push(...(tx.patches as TraceOp[]));
+    }
+}
+
+console.log(`✅ Successfully flattened ${allEdits.length} individual edits.`);
 
 async function run() {
-    // --- A1.json Loading & Flattening logic ---
-    const fileContent = fs.readFileSync("./datasets/A1.json", 'utf8');
-    const rawData = JSON.parse(fileContent);
-
-    // A1.json uses 'txns' for transactions
-    const allTransactions = rawData.txns || [];
-    const allEdits: TraceOp[] = [];
-
-    console.log(`Analyzing A1.json: Found ${allTransactions.length} transactions.`);
-
-    for (const tx of allTransactions) {
-        // Each transaction has a 'patches' array
-        if (tx.patches && Array.isArray(tx.patches)) {
-            allEdits.push(...(tx.patches as TraceOp[]));
-        }
-    }
-
-    if (allEdits.length === 0) {
-        throw new Error("❌ No edits found. Verify that A1.json has 'txns' containing 'patches'.");
-    }
-
-    console.log(`✅ Successfully flattened ${allEdits.length} individual edits.`);
-
-    // Setup ShareDB
     const backend = new ShareDB();
     const connection = backend.connect();
     const doc = connection.get('benchmarks', 'list-1');
-    await new Promise((res) => doc.create({ items: [] }, res));
+    
+    // Initialize with startContent if it exists
+    const initialItems = rawData.startContent ? rawData.startContent.split("") : [];
+    await new Promise((res) => doc.create({ items: initialItems }, res));
 
-    // Slice based on experimental batch size
     const alphaOps = allEdits.slice(0, batchSize);
     const bravoOps = allEdits.slice(batchSize, batchSize * 2);
 
-    // Establish "History" (Alpha's work)
+    // Establish History (Alpha's work)
     alphaOps.forEach((op) => {
-        const ops = translateToOps(op);
+        const ops = translateToOps(doc, op);
         ops.forEach(o => doc.submitOp(o));
     });
 
-    // Measure the "Merge" (Applying Bravo's concurrent work)
+    // Measure Merge (Bravo's concurrent work)
     const memBefore = process.memoryUsage().heapUsed;
     const start = performance.now();
 
     for (const op of bravoOps) {
-        const ops = translateToOps(op);
-        // In OT, applying these ops triggers the transformation against Alpha's work
+        const ops = translateToOps(doc, op);
         ops.forEach(o => doc.submitOp(o));
     }
 
     const duration = performance.now() - start;
     const memAfter = process.memoryUsage().heapUsed;
-    
-    // Payload for OT: Sum of individual serialized operations sent
     const payloadSize = Buffer.byteLength(JSON.stringify(bravoOps));
 
     saveResultsToCSV('ShareDB', duration, memAfter - memBefore, payloadSize, batchSize);
-    console.log(`Results saved for ShareDB at size ${batchSize}`);
 }
 
-/**
- * Translates an A1.json patch into ShareDB json0 operations.
- * Returns an array because a single 'delete length X' becomes X individual ops.
- */
-function translateToOps(patch: TraceOp): any[] {
+function translateToOps(doc: any, patch: TraceOp): any[] {
     const [index, length, text] = patch;
     const ops: any[] = [];
+    const currentLen = doc.data.items.length;
+    
+    // Safe Index Fallback
+    const safeIdx = Math.min(index, currentLen);
 
     if (text !== undefined) {
-        // Insertion
-        ops.push({ p: ['items', index], li: text });
+        ops.push({ p: ['items', safeIdx], li: text });
     } else {
-        // Deletion: Must delete 'length' times at the same index because the list shifts after each deletion.
-        for (let i = 0; i < length; i++) {
-            ops.push({ p: ['items', index], ld: true });
+        // Ensure we don't try to delete more items than exist after safeIdx
+        const safeLength = Math.min(length, currentLen - safeIdx);
+        for (let i = 0; i < safeLength; i++) {
+            ops.push({ p: ['items', safeIdx], ld: true });
         }
     }
     return ops;

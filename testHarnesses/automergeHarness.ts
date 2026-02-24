@@ -7,21 +7,30 @@ type EgWalkerDelete = [number, number];
 type TraceOp = EgWalkerInsert | EgWalkerDelete;
 
 const batchSize = parseInt(process.argv[2] || "500");
-const rawData = JSON.parse(fs.readFileSync("./datasets/A1.json", "utf8"));
+// --- A1.json Loading & Flattening logic ---
+const fileContent = fs.readFileSync("./datasets/A1.json", 'utf8');
+const rawData = JSON.parse(fileContent);
 
-const allTransactions = (rawData.transactions || []) as {patches?: TraceOp[] }[];
+// A1.json uses 'txns' for transactions
+const allTransactions = rawData.txns || [];
 const allEdits: TraceOp[] = [];
 
-//Flatten the nested patches
+console.log(`Analyzing A1.json: Found ${allTransactions.length} transactions.`);
+
 for (const tx of allTransactions) {
-    if (tx.patches) {
-        allEdits.push(...tx.patches);
+    // Each transaction has a 'patches' array
+    if (tx.patches && Array.isArray(tx.patches)) {
+        allEdits.push(...(tx.patches as TraceOp[]));
     }
 }
 
-console.log(`Successfully loaded ${allEdits.length} individual edits from A1.json`);
+if (allEdits.length === 0) {
+    throw new Error("❌ No edits found. Verify that A1.json has 'txns' containing 'patches'.");
+}
 
-// 1. Initial Setup
+console.log(`✅ Successfully flattened ${allEdits.length} individual edits.`);
+
+// Initial Setup
 let docAlpha = Automerge.init();
 docAlpha = Automerge.change(docAlpha, (d: any) => { d.items = []; });
 let docBravo = Automerge.clone(docAlpha);
@@ -29,7 +38,7 @@ let docBravo = Automerge.clone(docAlpha);
 const alphaOps: TraceOp[] = allEdits.slice(0, batchSize);
 const bravoOps: TraceOp[] = allEdits.slice(batchSize, batchSize * 2);
 
-// 2. Apply "Offline" Work
+// Apply "Offline" Work
 docAlpha = Automerge.change(docAlpha, (d: any) => {
     for (const op of alphaOps) {
         if (op.length === 3) d.items.insertAt(op[0], ...op[2].split(""));
@@ -44,7 +53,7 @@ docBravo = Automerge.change(docBravo, (d: any) => {
     }
 });
 
-// 3. Measure the "Merge"
+// Measure the "Merge"
 const memBefore = process.memoryUsage().heapUsed;
 const start = performance.now();
 

@@ -12,21 +12,30 @@ type TraceOp = EgWalkerInsert | EgWalkerDelete;
 const batchSize = parseInt(process.argv[2] || "500");
 
 async function run() {
-    // 1. Load and Flatten A1.json structure
+    // --- A1.json Loading & Flattening logic ---
     const fileContent = fs.readFileSync("./datasets/A1.json", 'utf8');
     const rawData = JSON.parse(fileContent);
-    const allTransactions = rawData.transactions || [];
+
+    // A1.json uses 'txns' for transactions
+    const allTransactions = rawData.txns || [];
     const allEdits: TraceOp[] = [];
 
+    console.log(`Analyzing A1.json: Found ${allTransactions.length} transactions.`);
+
     for (const tx of allTransactions) {
-        if (tx.patches) {
+        // Each transaction has a 'patches' array
+        if (tx.patches && Array.isArray(tx.patches)) {
             allEdits.push(...(tx.patches as TraceOp[]));
         }
     }
 
-    console.log(`Loaded ${allEdits.length} edits. Testing batch size: ${batchSize}`);
+    if (allEdits.length === 0) {
+        throw new Error("❌ No edits found. Verify that A1.json has 'txns' containing 'patches'.");
+    }
 
-    // 2. Setup ShareDB
+    console.log(`✅ Successfully flattened ${allEdits.length} individual edits.`);
+
+    // Setup ShareDB
     const backend = new ShareDB();
     const connection = backend.connect();
     const doc = connection.get('benchmarks', 'list-1');
@@ -36,13 +45,13 @@ async function run() {
     const alphaOps = allEdits.slice(0, batchSize);
     const bravoOps = allEdits.slice(batchSize, batchSize * 2);
 
-    // 3. Establish "History" (Alpha's work)
+    // Establish "History" (Alpha's work)
     alphaOps.forEach((op) => {
         const ops = translateToOps(op);
         ops.forEach(o => doc.submitOp(o));
     });
 
-    // 4. Measure the "Merge" (Applying Bravo's concurrent work)
+    // Measure the "Merge" (Applying Bravo's concurrent work)
     const memBefore = process.memoryUsage().heapUsed;
     const start = performance.now();
 

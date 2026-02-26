@@ -11,7 +11,8 @@ def generate_plots():
     averages = df.groupby(['dataset', 'algorithm', 'batch_size']).mean().reset_index()
     datasets = averages['dataset'].unique()
     algorithms = averages['algorithm'].unique()
-    colors = {'Automerge': '#1f77b4', 'ShareDB': '#ff7f0e'}
+
+    colors = {'Automerge': '#1f77b4', 'ShareDB': '#ff7f0e', 'Yjs': '#2ca02c'}
 
     for ds in datasets:
         ds_data = averages[averages['dataset'] == ds]

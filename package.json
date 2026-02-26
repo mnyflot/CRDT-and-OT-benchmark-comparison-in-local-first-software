@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@automerge/automerge": "^3.2.3",
-    "sharedb": "^5.2.2"
+    "sharedb": "^5.2.2",
+    "yjs": "^13.6.29"
   }
 }

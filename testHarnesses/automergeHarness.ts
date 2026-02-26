@@ -7,17 +7,28 @@ type EgWalkerDelete = [number, number];
 type TraceOp = EgWalkerInsert | EgWalkerDelete;
 
 const batchSize = parseInt(process.argv[2] || "500");
-const fileContent = fs.readFileSync("./datasets/A1.json", "utf8");
+const datasetName = process.argv[3]
+
+console.log(`Loading dataset: ${datasetName} | Batch size: ${batchSize}`);
+
+const fileContent = fs.readFileSync(`./datasets/${datasetName}.json`, 'utf8');
 const rawData = JSON.parse(fileContent);
 
 const allTransactions = rawData.txns || [];
 const allEdits: TraceOp[] = [];
 
-console.log(`Analyzing A1.json: Found ${allTransactions.length} transactions.`);
+console.log(`Analyzing ${datasetName}: Found ${allTransactions.length} transactions.`);
 
 for (const tx of allTransactions) {
     if (tx.patches && Array.isArray(tx.patches)) {
-        allEdits.push(...(tx.patches as TraceOp[]));
+        for (const patch of tx.patches) {
+            allEdits.push(patch as TraceOp);
+        }
+    } else if (tx.ops && Array.isArray(tx.ops)) {
+        // Fallback for differently formatted traces
+        for (const op of tx.ops) {
+            allEdits.push(op as TraceOp);
+        }
     }
 }
 
@@ -64,11 +75,11 @@ const duration = performance.now() - start;
 const memAfter = process.memoryUsage().heapUsed;
 const payloadSize = Automerge.save(finalDoc).length; 
 
-saveResultsToCSV('Automerge', duration, memAfter - memBefore, payloadSize, batchSize);
+saveResultsToCSV('Automerge', datasetName, duration, memAfter - memBefore, payloadSize, batchSize);
 
-function saveResultsToCSV(algo: string, time: number, mem: number, payload: number, size: number) {
+function saveResultsToCSV(algo: string, dataset: string, time: number, mem: number, payload: number, size: number) {
     const fileName = 'experimentResults.csv';
-    const header = 'algorithm,batch_size,duration_ms,memory_bytes,payload_bytes\n';
+    const header = 'algorithm,dataset,batch_size,duration_ms,memory_bytes,payload_bytes\n';
     if (!fs.existsSync(fileName)) fs.writeFileSync(fileName, header);
-    fs.appendFileSync(fileName, `${algo},${size},${time},${mem},${payload}\n`);
+    fs.appendFileSync(fileName, `${algo},${dataset},${size},${time},${mem},${payload}\n`);
 }

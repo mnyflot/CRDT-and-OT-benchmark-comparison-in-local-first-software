@@ -28,9 +28,9 @@ do
         
         for i in {1..3}
         do
-            # Notice we now pass $SIZE and $DATASET
-            npx tsx testHarnesses/automergeHarness.ts "$SIZE" "$DATASET"
-            npx tsx testHarnesses/sharedbHarness.ts "$SIZE" "$DATASET"
+            # Pass the --expose-gc flag to V8 engine via NODE_OPTIONS
+            NODE_OPTIONS="--expose-gc" npx tsx testHarnesses/automergeHarness.ts "$SIZE" "$DATASET"
+            NODE_OPTIONS="--expose-gc" npx tsx testHarnesses/sharedbHarness.ts "$SIZE" "$DATASET"
         done
     done
 done

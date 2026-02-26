@@ -56,6 +56,7 @@ async function run() {
     });
 
     // Measure Merge (Bravo's concurrent work)
+    if (global.gc) global.gc();
     const memBefore = process.memoryUsage().heapUsed;
     const start = performance.now();
 
@@ -65,10 +66,14 @@ async function run() {
     }
 
     const duration = performance.now() - start;
-    const memAfter = process.memoryUsage().heapUsed;
+    const memPeak = process.memoryUsage().heapUsed;
+
+    if (global.gc) global.gc();
+    const memAtRest = process.memoryUsage().heapUsed;
+
     const payloadSize = Buffer.byteLength(JSON.stringify(bravoOps));
 
-    saveResultsToCSV('ShareDB', datasetName, duration, memAfter - memBefore, payloadSize, batchSize);
+    saveResultsToCSV('ShareDB', datasetName, duration, memPeak - memBefore, memAtRest - memBefore, payloadSize, batchSize);
 }
 
 function translateToOps(doc: any, patch: TraceOp): any[] {
@@ -91,11 +96,11 @@ function translateToOps(doc: any, patch: TraceOp): any[] {
     return ops;
 }
 
-function saveResultsToCSV(algo: string, dataset: string, time: number, mem: number, payload: number, size: number) {
+function saveResultsToCSV(algo: string, dataset: string, time: number, peakMem: number, restMem: number, payload: number, size: number) {
     const fileName = 'experimentResults.csv';
-    const header = 'algorithm,dataset,batch_size,duration_ms,memory_bytes,payload_bytes\n';
+    const header = 'algorithm,dataset,batch_size,duration_ms,peak_memory_bytes,at_rest_memory_bytes,payload_bytes\n';
     if (!fs.existsSync(fileName)) fs.writeFileSync(fileName, header);
-    fs.appendFileSync(fileName, `${algo},${dataset},${size},${time},${mem},${payload}\n`);
+    fs.appendFileSync(fileName, `${algo},${dataset},${size},${time},${peakMem},${restMem},${payload}\n`);
 }
 
 run().catch(console.error);

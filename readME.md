@@ -32,7 +32,9 @@ pip install pandas matplotlib
 
     * shareDBHarness.ts: OT implementation.
 
-* /datasets: Place the A1.json editing trace here.
+    * yjsHarness.ts: Yjs implementation.
+
+* /datasets: Dataset file, both raw and in json format.
 
 run-experiments.sh: Master shell script to orchestrate the tests.
 
@@ -64,7 +66,9 @@ The benchmark records the following data points for each merge event:
 
 Duration (ms): The wall-clock time required to reconcile concurrent changes.
 
-Memory (Bytes): The heap memory delta during the merge operation.
+Peak Memory (Bytes): The heap memory delta during the merge operation.
+
+At-Rest Memory (Bytes): Memory after garbage collection.
 
 Payload Size (Bytes): 
 

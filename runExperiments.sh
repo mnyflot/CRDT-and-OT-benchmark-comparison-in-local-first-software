@@ -31,6 +31,7 @@ do
             NODE_OPTIONS="--expose-gc" npx tsx testHarnesses/automergeHarness.ts "$SIZE" "$DATASET"
             NODE_OPTIONS="--expose-gc" npx tsx testHarnesses/sharedbHarness.ts "$SIZE" "$DATASET"
             NODE_OPTIONS="--expose-gc" npx tsx testHarnesses/yjsHarness.ts "$SIZE" "$DATASET"
+            NODE_OPTIONS="--expose-gc" npx tsx testHarnesses/otJson0Harness.ts "$SIZE" "$DATASET"
         done
     done
 done

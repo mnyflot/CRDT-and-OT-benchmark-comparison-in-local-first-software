@@ -12,14 +12,14 @@ def generate_plots():
     datasets = averages['dataset'].unique()
     algorithms = averages['algorithm'].unique()
 
-    colors = {'Automerge': '#1f77b4', 'ShareDB': '#ff7f0e', 'Yjs': '#2ca02c'}
+    colors = {'Automerge': '#1f77b4', 'ShareDB': '#ff7f0e', 'Yjs': '#2ca02c', 'OT-json0': '#d62728'}
 
     for ds in datasets:
         ds_data = averages[averages['dataset'] == ds]
         
         # Create a 2x2 grid
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
-        fig.suptitle(f'Performance Comparison ({ds} Dataset): Automerge vs ShareDB', fontsize=16)
+        fig.suptitle(f'Performance Comparison ({ds} Dataset): CRDTs vs OT', fontsize=16)
 
         for algo in algorithms:
             algo_data = ds_data[ds_data['algorithm'] == algo]

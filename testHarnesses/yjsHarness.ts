@@ -27,6 +27,10 @@ for (const tx of allTransactions) {
     }
 }
 
+if (allEdits.length < batchSize * 2) {
+    console.warn(`⚠️  Dataset only has ${allEdits.length} edits but batchSize * 2 = ${batchSize * 2}. Bravo will have fewer ops than Alpha.`);
+}
+
 // Initial Setup with startContent
 const docAlpha = new Y.Doc();
 const textAlpha = docAlpha.getText('items');
@@ -46,10 +50,12 @@ const bravoOps = allEdits.slice(batchSize, batchSize * 2);
 
 // Apply "Offline" Work
 // wrap changes in a transact block to group them locally
+let clampedOps = 0;
 docAlpha.transact(() => {
     for (const op of alphaOps) {
         const [idx, len, txt] = op;
         const safeIdx = Math.min(idx, textAlpha.length);
+        if (safeIdx !== idx) clampedOps++;
         if (txt !== undefined) {
             textAlpha.insert(safeIdx, txt);
         } else {
@@ -63,6 +69,7 @@ docBravo.transact(() => {
     for (const op of bravoOps) {
         const [idx, len, txt] = op;
         const safeIdx = Math.min(idx, textBravo.length);
+        if (safeIdx !== idx) clampedOps++;
         if (txt !== undefined) {
             textBravo.insert(safeIdx, txt);
         } else {
@@ -72,8 +79,10 @@ docBravo.transact(() => {
     }
 });
 
-// Extract Bravo's state to apply to Alpha
-const bravoUpdate = Y.encodeStateAsUpdate(docBravo);
+if (clampedOps > 0) console.warn(`⚠️  ${clampedOps} ops had out-of-bounds indices and were clamped.`);
+
+// Encode only what Bravo has that Alpha doesn't — this is what would actually be transmitted.
+const bravoUpdate = Y.encodeStateAsUpdate(docBravo, Y.encodeStateVector(docAlpha));
 
 // Measure the "Merge"
 if (global.gc) global.gc();
@@ -89,8 +98,8 @@ const memPeak = process.memoryUsage().heapUsed;
 if (global.gc) global.gc();
 const memAtRest = process.memoryUsage().heapUsed;
 
-// Payload for Yjs: Binary representation of the total state
-const payloadSize = Y.encodeStateAsUpdate(docAlpha).byteLength; 
+// Payload: the incremental update Bravo transmitted to Alpha (already computed above).
+const payloadSize = bravoUpdate.byteLength;
 
 saveResultsToCSV('Yjs', datasetName, duration, memPeak - memBefore, memAtRest - memBefore, payloadSize, batchSize);
 

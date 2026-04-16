@@ -37,6 +37,10 @@ for (const tx of allTransactions) {
 
 console.log(`✅ Successfully flattened ${allEdits.length} individual edits.`);
 
+if (allEdits.length < batchSize * 2) {
+    console.warn(`⚠️  Dataset only has ${allEdits.length} edits but batchSize * 2 = ${batchSize * 2}. Bravo will have fewer ops than Alpha.`);
+};
+
 async function run() {
     const backend = new ShareDB();
     const connection = backend.connect();
@@ -50,18 +54,28 @@ async function run() {
     const bravoOps = allEdits.slice(batchSize, batchSize * 2);
 
     // Establish History (Alpha's work)
+    // NOTE: This harness does not simulate true offline divergence. Alpha's ops are
+    // submitted to the server first; Bravo's ops are then submitted against the
+    // already-updated document. ShareDB would only invoke json0.transform() if Bravo
+    // referenced an earlier server version — which never happens here. This measures
+    // the cost of sequential op application, not OT conflict resolution.
+    let clampedOps = 0;
     alphaOps.forEach((op) => {
+        if (op[0] > doc.data.items.length) clampedOps++;
         const ops = translateToOps(doc, op);
         ops.forEach(o => doc.submitOp(o));
     });
 
-    // Measure Merge (Bravo's concurrent work)
+    // Measure Merge (Bravo's sequential application — see note above)
     if (global.gc) global.gc();
     const memBefore = process.memoryUsage().heapUsed;
     const start = performance.now();
 
+    const allBravoJsonOps: any[] = [];
     for (const op of bravoOps) {
+        if (op[0] > doc.data.items.length) clampedOps++;
         const ops = translateToOps(doc, op);
+        allBravoJsonOps.push(...ops);
         ops.forEach(o => doc.submitOp(o));
     }
 
@@ -71,7 +85,10 @@ async function run() {
     if (global.gc) global.gc();
     const memAtRest = process.memoryUsage().heapUsed;
 
-    const payloadSize = Buffer.byteLength(JSON.stringify(bravoOps));
+    if (clampedOps > 0) console.warn(`⚠️  ${clampedOps} ops had out-of-bounds indices and were clamped.`);
+
+    // Payload: the json0 ops Bravo actually submitted (wire format).
+    const payloadSize = Buffer.byteLength(JSON.stringify(allBravoJsonOps));
 
     saveResultsToCSV('ShareDB', datasetName, duration, memPeak - memBefore, memAtRest - memBefore, payloadSize, batchSize);
 }

@@ -8,7 +8,7 @@ def generate_plots():
         print("Error: experimentResults.csv not found.")
         return
 
-    averages = df.groupby(['dataset', 'algorithm', 'batch_size']).mean().reset_index()
+    averages = df.groupby(['dataset', 'algorithm', 'batch_size']).median().reset_index()
     datasets = averages['dataset'].unique()
     algorithms = averages['algorithm'].unique()
 

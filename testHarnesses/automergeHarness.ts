@@ -32,6 +32,10 @@ for (const tx of allTransactions) {
     }
 }
 
+if (allEdits.length < batchSize * 2) {
+    console.warn(`⚠️  Dataset only has ${allEdits.length} edits but batchSize * 2 = ${batchSize * 2}. Bravo will have fewer ops than Alpha.`);
+}
+
 console.log(`✅ Successfully flattened ${allEdits.length} individual edits.`);
 
 // Initial Setup with startContent
@@ -49,9 +53,11 @@ const alphaOps: TraceOp[] = allEdits.slice(0, batchSize);
 const bravoOps: TraceOp[] = allEdits.slice(batchSize, batchSize * 2);
 
 // Apply "Offline" Work using Safe Indices
+let clampedOps = 0;
 docAlpha = Automerge.change(docAlpha, (d: any) => {
     for (const op of alphaOps) {
-        const safeIdx = Math.min(op[0], d.items.length); // Prevent RangeError
+        const safeIdx = Math.min(op[0], d.items.length);
+        if (safeIdx !== op[0]) clampedOps++;
         if (op[2] !== undefined) d.items.insertAt(safeIdx, ...op[2].split(""));
         else d.items.deleteAt(safeIdx, Math.min(op[1], d.items.length - safeIdx));
     }
@@ -59,26 +65,31 @@ docAlpha = Automerge.change(docAlpha, (d: any) => {
 
 docBravo = Automerge.change(docBravo, (d: any) => {
     for (const op of bravoOps) {
-        const safeIdx = Math.min(op[0], d.items.length); // Prevent RangeError
+        const safeIdx = Math.min(op[0], d.items.length);
+        if (safeIdx !== op[0]) clampedOps++;
         if (op[2] !== undefined) d.items.insertAt(safeIdx, ...op[2].split(""));
         else d.items.deleteAt(safeIdx, Math.min(op[1], d.items.length - safeIdx));
     }
 });
+
+if (clampedOps > 0) console.warn(`⚠️  ${clampedOps} ops had out-of-bounds indices and were clamped.`);
+
+// Payload: changes Bravo has that Alpha hasn't seen — what would actually be transmitted.
+const bravoChanges = Automerge.getChanges(docAlpha, docBravo);
+const payloadSize = bravoChanges.reduce((sum: number, c: Uint8Array) => sum + c.byteLength, 0);
 
 // 3. Measure the "Merge"
 if (global.gc) global.gc(); // Clean slate before merge
 const memBefore = process.memoryUsage().heapUsed;
 const start = performance.now();
 
-const finalDoc = Automerge.merge(docAlpha, docBravo); 
+Automerge.merge(docAlpha, docBravo);
 
 const duration = performance.now() - start;
 const memPeak = process.memoryUsage().heapUsed; // Peak in-flight memory
 
 if (global.gc) global.gc(); // Clean up temporary merge variables
 const memAtRest = process.memoryUsage().heapUsed; // Fundamental data structure size
-
-const payloadSize = Automerge.save(finalDoc).length; 
 
 saveResultsToCSV('Automerge', datasetName, duration, memPeak - memBefore, memAtRest - memBefore, payloadSize, batchSize);
 

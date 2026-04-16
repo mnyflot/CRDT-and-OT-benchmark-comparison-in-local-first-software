@@ -38,7 +38,7 @@ pip install pandas matplotlib
 
 run-experiments.sh: Master shell script to orchestrate the tests.
 
-visualize_results.py: Data analysis and graph generation.
+visualizeResults.py: Data analysis and graph generation.
 
 ### Running the Benchmark
  
@@ -47,18 +47,18 @@ visualize_results.py: Data analysis and graph generation.
  
 ```
 # Give the script execution permission
-chmod +x run-experiments.sh
+chmod +x runExperiments.sh
 
 
 # Run the master suite
-./run-experiments.sh
+./runExperiments.sh
 ```
 
 2. Generate the Visualizations
 Once the experiments are complete, a file named experimentResults.csv will be created. Use the Python script to generate the comparison graphs:
 
 ```
-python3 visualize_results.py
+python3 visualizeResults.py
 ```
 
 ### Measurement Metrics
